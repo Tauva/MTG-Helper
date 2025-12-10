@@ -1,0 +1,59 @@
+{
+  "expo": {
+    "name": "MTG Collection",
+    "slug": "mtg-collection",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#121212"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.mtgcollection.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "This app uses the camera to scan Magic: The Gathering cards"
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#121212"
+      },
+      "package": "com.mtgcollection.app",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.RECORD_AUDIO"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow MTG Collection to access your camera to scan cards."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow MTG Collection to access your photos to import card images."
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "24c24b62-7392-4640-bdf8-f1a1925138e8"
+      }
+    },
+    "owner": "t4uvas-organization"
+  }
+}
