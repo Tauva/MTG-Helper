@@ -178,13 +178,26 @@ Modifiez les couleurs dans chaque fichier de style. La couleur principale est `#
 2. Ajoutez-le à la navigation dans `App.js`
 3. Utilisez `useCollection()` pour accéder à la collection
 
-## ⚠️ Limitations connues
+## ⚠️ Notes importantes
 
-1. **Scanner de cartes** : L'OCR automatique n'est pas implémenté. L'utilisateur doit entrer le nom manuellement après la capture. Pour un vrai OCR, il faudrait intégrer un service comme Google Cloud Vision ou Tesseract.
+### OCR (Tesseract.js)
+L'application utilise maintenant Tesseract.js pour la reconnaissance de texte. Cependant :
+- L'OCR fonctionne mieux avec de bonnes conditions de lumière
+- Positionner le nom de la carte dans le cadre de scan
+- L'OCR peut proposer plusieurs suggestions si la reconnaissance n'est pas parfaite
+- Il est toujours possible d'entrer le nom manuellement
 
-2. **EDHREC** : Comme il n'y a pas d'API officielle, certaines fonctionnalités peuvent cesser de fonctionner si EDHREC modifie leur structure.
+### Compatibilité écrans
+L'application utilise SafeAreaView et prend en compte les insets pour :
+- La barre de statut en haut
+- Les boutons de navigation Android en bas (Samsung, etc.)
+- Les enccoches et îlots dynamiques
 
-3. **Stockage** : Les données sont stockées localement. Si vous désinstallez l'app, utilisez l'export pour sauvegarder.
+### EDHREC
+Comme il n'y a pas d'API officielle, certaines fonctionnalités peuvent cesser de fonctionner si EDHREC modifie leur structure.
+
+### Stockage
+Les données sont stockées localement. Si vous désinstallez l'app, utilisez l'export pour sauvegarder.
 
 ## 📄 Licence
 
@@ -197,7 +210,3 @@ Les contributions sont bienvenues ! N'hésitez pas à ouvrir des issues ou des p
 ---
 
 Développé avec ❤️ pour la communauté Magic: The Gathering
-
-
-#TODO fix résolution galaxy a24 bouton bare reste en avant 
-#TODO Fix scan 

@@ -9,6 +9,7 @@ import {
   ScrollView,
   ActivityIndicator,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
@@ -22,6 +23,7 @@ import {
 } from '../services/storageService';
 
 const ImportScreen = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
   const [decklistText, setDecklistText] = useState('');
   const [loading, setLoading] = useState(false);
   const [parseResults, setParseResults] = useState(null);
@@ -170,8 +172,11 @@ const ImportScreen = ({ navigation }) => {
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.header}>
+    <ScrollView 
+      style={styles.container} 
+      contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 32 }]}
+    >
+      <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={28} color="#FFF" />
         </TouchableOpacity>

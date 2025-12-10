@@ -10,12 +10,14 @@ import {
   Alert,
   ScrollView,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useCollection } from '../context/CollectionContext';
 import { generateDeckSuggestions } from '../services/edhrecApi';
 import { getCardByFuzzyName } from '../services/scryfallApi';
 
 const DecksScreen = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
   const { 
     decks, 
     collection,
@@ -151,7 +153,7 @@ const DecksScreen = ({ navigation }) => {
   );
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
         <Text style={styles.title}>My Decks</Text>
         <TouchableOpacity
@@ -407,7 +409,7 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   listContent: {
-    paddingBottom: 100,
+    paddingBottom: 120,
   },
   deckCard: {
     backgroundColor: '#2A2A2A',

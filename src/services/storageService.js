@@ -251,10 +251,17 @@ export const loadSettings = async () => {
       showPrices: true,
       defaultFormat: 'commander',
       theme: 'dark',
+      searchLanguage: 'fr', // Default to French
     };
   } catch (error) {
     console.error('Error loading settings:', error);
-    return {};
+    return {
+      currency: 'usd',
+      showPrices: true,
+      defaultFormat: 'commander',
+      theme: 'dark',
+      searchLanguage: 'fr',
+    };
   }
 };
 

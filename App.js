@@ -1,8 +1,10 @@
 import React from 'react';
 import { StatusBar } from 'expo-status-bar';
+import { Platform } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { CollectionProvider } from './src/context/CollectionContext';
 
@@ -17,6 +19,8 @@ const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
 
 const TabNavigator = () => {
+  const insets = useSafeAreaInsets();
+  
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -47,13 +51,17 @@ const TabNavigator = () => {
         tabBarStyle: {
           backgroundColor: '#1E1E1E',
           borderTopColor: '#2A2A2A',
-          paddingBottom: 8,
+          borderTopWidth: 1,
           paddingTop: 8,
-          height: 65,
+          // Ajoute le padding pour les boutons de navigation Android
+          paddingBottom: Math.max(insets.bottom, 12),
+          height: 60 + Math.max(insets.bottom, 12),
+          elevation: 8,
         },
         tabBarLabelStyle: {
           fontSize: 11,
           fontWeight: '500',
+          marginBottom: 4,
         },
         headerShown: false,
       })}
@@ -84,26 +92,28 @@ const TabNavigator = () => {
 
 const App = () => {
   return (
-    <CollectionProvider>
-      <NavigationContainer>
-        <StatusBar style="light" />
-        <Stack.Navigator
-          screenOptions={{
-            headerShown: false,
-            cardStyle: { backgroundColor: '#121212' },
-          }}
-        >
-          <Stack.Screen name="Main" component={TabNavigator} />
-          <Stack.Screen 
-            name="Import" 
-            component={ImportScreen}
-            options={{
-              presentation: 'modal',
+    <SafeAreaProvider>
+      <CollectionProvider>
+        <NavigationContainer>
+          <StatusBar style="light" translucent backgroundColor="transparent" />
+          <Stack.Navigator
+            screenOptions={{
+              headerShown: false,
+              cardStyle: { backgroundColor: '#121212' },
             }}
-          />
-        </Stack.Navigator>
-      </NavigationContainer>
-    </CollectionProvider>
+          >
+            <Stack.Screen name="Main" component={TabNavigator} />
+            <Stack.Screen 
+              name="Import" 
+              component={ImportScreen}
+              options={{
+                presentation: 'modal',
+              }}
+            />
+          </Stack.Navigator>
+        </NavigationContainer>
+      </CollectionProvider>
+    </SafeAreaProvider>
   );
 };
 

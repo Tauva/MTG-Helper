@@ -8,12 +8,14 @@ import {
   RefreshControl,
   Alert,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useCollection } from '../context/CollectionContext';
 import CardItem from '../components/CardItem';
 import SearchBar from '../components/SearchBar';
 
 const CollectionScreen = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
   const { 
     collection, 
     loading, 
@@ -151,7 +153,7 @@ const CollectionScreen = ({ navigation }) => {
   );
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
         <Text style={styles.title}>My Collection</Text>
         <TouchableOpacity 
@@ -303,7 +305,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#6B4FA2',
   },
   listContent: {
-    paddingBottom: 100,
+    paddingBottom: 120,
   },
   emptyContainer: {
     flex: 1,

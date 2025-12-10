@@ -132,8 +132,13 @@ const CardItem = ({
           )}
           <View style={styles.cardInfo}>
             <Text style={styles.cardName} numberOfLines={2}>
-              {card.name}
+              {card.printed_name || card.displayName || card.name}
             </Text>
+            {card.printed_name && card.printed_name !== card.name && (
+              <Text style={styles.cardNameOriginal} numberOfLines={1}>
+                ({card.name})
+              </Text>
+            )}
             {renderManaSymbols(card.manaCost || card.mana_cost)}
             <Text style={styles.typeLine} numberOfLines={1}>
               {card.typeLine || card.type_line}
@@ -200,7 +205,12 @@ const CardItem = ({
                   resizeMode="contain"
                 />
               )}
-              <Text style={styles.modalTitle}>{card.name}</Text>
+              <Text style={styles.modalTitle}>
+                {card.printed_name || card.name}
+              </Text>
+              {card.printed_name && card.printed_name !== card.name && (
+                <Text style={styles.modalTitleOriginal}>({card.name})</Text>
+              )}
               {renderManaSymbols(card.manaCost || card.mana_cost)}
               <Text style={styles.modalType}>
                 {card.typeLine || card.type_line}
@@ -292,7 +302,13 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     color: '#FFF',
+    marginBottom: 2,
+  },
+  cardNameOriginal: {
+    fontSize: 11,
+    color: '#888',
     marginBottom: 4,
+    fontStyle: 'italic',
   },
   manaContainer: {
     flexDirection: 'row',
@@ -414,8 +430,15 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: 'bold',
     color: '#FFF',
+    marginBottom: 4,
+    textAlign: 'center',
+  },
+  modalTitleOriginal: {
+    fontSize: 14,
+    color: '#888',
     marginBottom: 8,
     textAlign: 'center',
+    fontStyle: 'italic',
   },
   modalType: {
     fontSize: 16,

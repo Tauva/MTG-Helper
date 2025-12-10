@@ -10,14 +10,27 @@ import {
   Image,
   TextInput,
   ScrollView,
+  Dimensions,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { getCardByFuzzyName, searchCardsByName } from '../services/scryfallApi';
+import { 
+  getCardByFuzzyName, 
+  searchCardsByName,
+  searchCardInAnyLanguage,
+  LANGUAGES 
+} from '../services/scryfallApi';
+import { loadSettings } from '../services/storageService';
+import { recognizeCardFromImage } from '../services/ocrService';
 import { useCollection } from '../context/CollectionContext';
 
+const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
+
 const ScannerScreen = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
   const [permission, requestPermission] = useCameraPermissions();
   const [scanning, setScanning] = useState(false);
   const [foundCard, setFoundCard] = useState(null);
@@ -26,6 +39,9 @@ const ScannerScreen = ({ navigation }) => {
   const [showManualInput, setShowManualInput] = useState(false);
   const [suggestions, setSuggestions] = useState([]);
   const [processing, setProcessing] = useState(false);
+  const [ocrProgress, setOcrProgress] = useState(0);
+  const [ocrResults, setOcrResults] = useState(null);
+  const [searchLanguage, setSearchLanguage] = useState('fr');
   const cameraRef = useRef(null);
   
   const { addCardToCollection } = useCollection();
@@ -34,13 +50,62 @@ const ScannerScreen = ({ navigation }) => {
     if (!permission?.granted) {
       requestPermission();
     }
+    // Load language preference
+    loadSettings().then(settings => {
+      if (settings.searchLanguage) {
+        setSearchLanguage(settings.searchLanguage);
+      }
+    });
   }, [permission]);
+
+  const processImageWithOCR = async (imageUri) => {
+    setProcessing(true);
+    setOcrProgress(0);
+    
+    try {
+      // Crop to top portion of image where card name is
+      const manipulated = await ImageManipulator.manipulateAsync(
+        imageUri,
+        [
+          { crop: { originX: 0, originY: 0, width: screenWidth, height: screenHeight * 0.25 } }
+        ],
+        { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG }
+      );
+      
+      const ocrResult = await recognizeCardFromImage(
+        manipulated.uri,
+        (progress) => setOcrProgress(progress)
+      );
+      
+      setOcrResults(ocrResult);
+      
+      if (ocrResult.success && ocrResult.bestGuess) {
+        // Try to find the card with the OCR result
+        await searchCard(ocrResult.bestGuess);
+      } else {
+        // Show manual input with OCR suggestions
+        setShowManualInput(true);
+        if (ocrResult.cardNames.length > 0) {
+          setManualName(ocrResult.cardNames[0]);
+        }
+      }
+    } catch (error) {
+      console.error('OCR processing error:', error);
+      Alert.alert(
+        'OCR Error',
+        'Could not process image. Please enter the card name manually.',
+        [{ text: 'OK', onPress: () => setShowManualInput(true) }]
+      );
+    } finally {
+      setProcessing(false);
+      setOcrProgress(0);
+    }
+  };
 
   const takePicture = async () => {
     if (!cameraRef.current || scanning) return;
     
     setScanning(true);
-    setProcessing(true);
     
     try {
       const photo = await cameraRef.current.takePictureAsync({
@@ -48,26 +113,12 @@ const ScannerScreen = ({ navigation }) => {
         base64: false,
       });
       
-      Alert.alert(
-        'Card Captured',
-        'Automatic card recognition is limited. Please enter the card name manually or try searching.',
-        [
-          {
-            text: 'Enter Name',
-            onPress: () => setShowManualInput(true),
-          },
-          {
-            text: 'Search Instead',
-            onPress: () => navigation.navigate('Search'),
-          },
-        ]
-      );
+      await processImageWithOCR(photo.uri);
     } catch (error) {
       console.error('Camera error:', error);
       Alert.alert('Error', 'Failed to capture image');
     } finally {
       setScanning(false);
-      setProcessing(false);
     }
   };
 
@@ -77,8 +128,8 @@ const ScannerScreen = ({ navigation }) => {
       quality: 0.8,
     });
 
-    if (!result.canceled) {
-      setShowManualInput(true);
+    if (!result.canceled && result.assets[0]) {
+      await processImageWithOCR(result.assets[0].uri);
     }
   };
 
@@ -87,21 +138,40 @@ const ScannerScreen = ({ navigation }) => {
     
     setProcessing(true);
     try {
-      const card = await getCardByFuzzyName(name);
+      // First try fuzzy search with language support
+      const card = await getCardByFuzzyName(name, searchLanguage);
       setFoundCard(card);
       setShowModal(true);
       setShowManualInput(false);
       setManualName('');
+      setSuggestions([]);
+      setOcrResults(null);
     } catch (error) {
+      // Try searching in any language as fallback
       try {
-        const results = await searchCardsByName(name);
-        if (results.data && results.data.length > 0) {
-          setSuggestions(results.data.slice(0, 5));
-        } else {
-          Alert.alert('Not Found', `No cards found matching "${name}"`);
+        const card = await searchCardInAnyLanguage(name);
+        setFoundCard(card);
+        setShowModal(true);
+        setShowManualInput(false);
+        setManualName('');
+        setSuggestions([]);
+        setOcrResults(null);
+      } catch (anyLangError) {
+        // Try regular search
+        try {
+          const results = await searchCardsByName(name, 1, searchLanguage);
+          if (results.data && results.data.length > 0) {
+            setSuggestions(results.data.slice(0, 5));
+            if (!showManualInput) {
+              setShowManualInput(true);
+              setManualName(name);
+            }
+          } else {
+            Alert.alert('Non trouvé', `Aucune carte trouvée pour "${name}"`);
+          }
+        } catch (searchError) {
+          Alert.alert('Erreur', 'Carte non trouvée. Vérifiez l\'orthographe.');
         }
-      } catch (searchError) {
-        Alert.alert('Error', 'Card not found. Please check the spelling.');
       }
     } finally {
       setProcessing(false);
@@ -113,7 +183,8 @@ const ScannerScreen = ({ navigation }) => {
     
     const success = await addCardToCollection(foundCard, 1);
     if (success) {
-      Alert.alert('Added!', `${foundCard.name} added to collection.`);
+      const displayName = foundCard.printed_name || foundCard.name;
+      Alert.alert('Ajouté !', `${displayName} ajouté à la collection.`);
       setShowModal(false);
       setFoundCard(null);
     }
@@ -124,11 +195,12 @@ const ScannerScreen = ({ navigation }) => {
     setSuggestions([]);
     setShowModal(true);
     setShowManualInput(false);
+    setOcrResults(null);
   };
 
   if (!permission) {
     return (
-      <View style={styles.container}>
+      <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
         <ActivityIndicator size="large" color="#6B4FA2" />
       </View>
     );
@@ -136,7 +208,7 @@ const ScannerScreen = ({ navigation }) => {
 
   if (!permission.granted) {
     return (
-      <View style={styles.container}>
+      <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
         <View style={styles.permissionContainer}>
           <Ionicons name="camera-outline" size={80} color="#888" />
           <Text style={styles.permissionTitle}>Camera Permission Required</Text>
@@ -167,40 +239,54 @@ const ScannerScreen = ({ navigation }) => {
         style={styles.camera}
         facing="back"
       >
-        <View style={styles.overlay}>
+        <View style={[styles.overlay, { paddingTop: insets.top }]}>
           <View style={styles.header}>
-            <Text style={styles.title}>Scan Card</Text>
+            <Text style={styles.title}>Scanner</Text>
             <TouchableOpacity 
               style={styles.helpButton}
               onPress={() => Alert.alert(
-                'How to Scan',
-                '1. Position the card within the frame\n2. Ensure good lighting\n3. Tap the capture button\n4. Enter the card name if needed'
+                'Comment scanner',
+                '1. Positionnez le nom de la carte dans le cadre\n2. Assurez un bon éclairage\n3. Appuyez sur le bouton de capture\n4. L\'OCR va essayer de lire le nom\n5. Confirmez ou corrigez le nom\n\n💡 Fonctionne en français et anglais !'
               )}
             >
               <Ionicons name="help-circle" size={28} color="#FFF" />
             </TouchableOpacity>
           </View>
 
-          <View style={styles.scanArea}>
-            <View style={styles.cornerTL} />
-            <View style={styles.cornerTR} />
-            <View style={styles.cornerBL} />
-            <View style={styles.cornerBR} />
-            <Text style={styles.scanHint}>Position card here</Text>
+          {/* Scan Frame - positioned for card name */}
+          <View style={styles.scanAreaContainer}>
+            <Text style={styles.scanAreaLabel}>Alignez le nom de la carte ici</Text>
+            <View style={styles.scanArea}>
+              <View style={styles.cornerTL} />
+              <View style={styles.cornerTR} />
+              <View style={styles.cornerBL} />
+              <View style={styles.cornerBR} />
+            </View>
           </View>
 
-          <View style={styles.controls}>
+          {/* OCR Progress */}
+          {processing && (
+            <View style={styles.progressContainer}>
+              <ActivityIndicator size="large" color="#6B4FA2" />
+              <Text style={styles.progressText}>
+                {ocrProgress > 0 ? `Processing... ${Math.round(ocrProgress)}%` : 'Capturing...'}
+              </Text>
+            </View>
+          )}
+
+          {/* Controls */}
+          <View style={[styles.controls, { paddingBottom: insets.bottom + 20 }]}>
             <TouchableOpacity style={styles.controlButton} onPress={pickImage}>
               <Ionicons name="images" size={24} color="#FFF" />
-              <Text style={styles.controlText}>Gallery</Text>
+              <Text style={styles.controlText}>Galerie</Text>
             </TouchableOpacity>
 
             <TouchableOpacity 
-              style={[styles.captureButton, scanning && styles.captureButtonDisabled]}
+              style={[styles.captureButton, (scanning || processing) && styles.captureButtonDisabled]}
               onPress={takePicture}
-              disabled={scanning}
+              disabled={scanning || processing}
             >
-              {processing ? (
+              {scanning || processing ? (
                 <ActivityIndicator color="#FFF" size="small" />
               ) : (
                 <View style={styles.captureInner} />
@@ -212,12 +298,13 @@ const ScannerScreen = ({ navigation }) => {
               onPress={() => setShowManualInput(true)}
             >
               <Ionicons name="create" size={24} color="#FFF" />
-              <Text style={styles.controlText}>Manual</Text>
+              <Text style={styles.controlText}>Manuel</Text>
             </TouchableOpacity>
           </View>
         </View>
       </CameraView>
 
+      {/* Manual Input Modal */}
       <Modal
         visible={showManualInput}
         animationType="slide"
@@ -225,25 +312,56 @@ const ScannerScreen = ({ navigation }) => {
         onRequestClose={() => setShowManualInput(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.manualInputContainer}>
+          <View style={[styles.manualInputContainer, { marginBottom: insets.bottom }]}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Enter Card Name</Text>
+              <Text style={styles.modalTitle}>
+                {ocrResults ? 'Confirmer le nom' : 'Entrer le nom'}
+              </Text>
               <TouchableOpacity onPress={() => {
                 setShowManualInput(false);
                 setManualName('');
                 setSuggestions([]);
+                setOcrResults(null);
               }}>
                 <Ionicons name="close" size={28} color="#FFF" />
               </TouchableOpacity>
             </View>
 
+            {/* OCR Results Info */}
+            {ocrResults && (
+              <View style={styles.ocrInfo}>
+                <Ionicons name="scan" size={16} color="#6B4FA2" />
+                <Text style={styles.ocrInfoText}>
+                  OCR détecté : "{ocrResults.bestGuess}" ({Math.round(ocrResults.confidence)}% confiance)
+                </Text>
+              </View>
+            )}
+
+            {/* OCR Alternative Suggestions */}
+            {ocrResults && ocrResults.cardNames.length > 1 && (
+              <View style={styles.ocrAlternatives}>
+                <Text style={styles.ocrAlternativesTitle}>Autres possibilités :</Text>
+                <View style={styles.ocrAlternativesRow}>
+                  {ocrResults.cardNames.slice(1, 4).map((name, index) => (
+                    <TouchableOpacity
+                      key={index}
+                      style={styles.ocrAlternativeChip}
+                      onPress={() => setManualName(name)}
+                    >
+                      <Text style={styles.ocrAlternativeText}>{name}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            )}
+
             <TextInput
               style={styles.textInput}
-              placeholder="Card name..."
+              placeholder="Nom de la carte (FR ou EN)..."
               placeholderTextColor="#666"
               value={manualName}
               onChangeText={setManualName}
-              autoFocus
+              autoFocus={!ocrResults}
               returnKeyType="search"
               onSubmitEditing={() => searchCard(manualName)}
             />
@@ -258,14 +376,14 @@ const ScannerScreen = ({ navigation }) => {
               ) : (
                 <>
                   <Ionicons name="search" size={20} color="#FFF" />
-                  <Text style={styles.searchButtonText}>Search</Text>
+                  <Text style={styles.searchButtonText}>Rechercher</Text>
                 </>
               )}
             </TouchableOpacity>
 
             {suggestions.length > 0 && (
               <ScrollView style={styles.suggestionsContainer}>
-                <Text style={styles.suggestionsTitle}>Did you mean:</Text>
+                <Text style={styles.suggestionsTitle}>Vouliez-vous dire :</Text>
                 {suggestions.map((card) => (
                   <TouchableOpacity
                     key={card.id}
@@ -282,6 +400,7 @@ const ScannerScreen = ({ navigation }) => {
         </View>
       </Modal>
 
+      {/* Found Card Modal */}
       <Modal
         visible={showModal}
         animationType="slide"
@@ -289,7 +408,7 @@ const ScannerScreen = ({ navigation }) => {
         onRequestClose={() => setShowModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.cardModalContent}>
+          <View style={[styles.cardModalContent, { marginBottom: insets.bottom }]}>
             <TouchableOpacity 
               style={styles.closeButton}
               onPress={() => {
@@ -310,7 +429,12 @@ const ScannerScreen = ({ navigation }) => {
                   style={styles.cardImage}
                   resizeMode="contain"
                 />
-                <Text style={styles.cardName}>{foundCard.name}</Text>
+                <Text style={styles.cardName}>
+                  {foundCard.printed_name || foundCard.name}
+                </Text>
+                {foundCard.printed_name && foundCard.printed_name !== foundCard.name && (
+                  <Text style={styles.cardNameEnglish}>({foundCard.name})</Text>
+                )}
                 <Text style={styles.cardType}>{foundCard.type_line}</Text>
                 <Text style={styles.cardSet}>{foundCard.set_name}</Text>
                 
@@ -320,7 +444,7 @@ const ScannerScreen = ({ navigation }) => {
 
                 <TouchableOpacity style={styles.addButton} onPress={handleAddCard}>
                   <Ionicons name="add-circle" size={24} color="#FFF" />
-                  <Text style={styles.addButtonText}>Add to Collection</Text>
+                  <Text style={styles.addButtonText}>Ajouter à la collection</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity 
@@ -330,7 +454,7 @@ const ScannerScreen = ({ navigation }) => {
                     setFoundCard(null);
                   }}
                 >
-                  <Text style={styles.scanAnotherText}>Scan Another</Text>
+                  <Text style={styles.scanAnotherText}>Scanner une autre carte</Text>
                 </TouchableOpacity>
               </ScrollView>
             )}
@@ -351,14 +475,13 @@ const styles = StyleSheet.create({
   },
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: 16,
-    paddingTop: 48,
   },
   title: {
     fontSize: 24,
@@ -368,20 +491,32 @@ const styles = StyleSheet.create({
   helpButton: {
     padding: 4,
   },
-  scanArea: {
+  scanAreaContainer: {
     flex: 1,
-    marginHorizontal: 32,
-    marginVertical: 48,
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     alignItems: 'center',
+    paddingTop: 20,
+  },
+  scanAreaLabel: {
+    color: '#FFF',
+    fontSize: 14,
+    marginBottom: 8,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 4,
+  },
+  scanArea: {
+    width: screenWidth - 64,
+    height: 80,
     position: 'relative',
   },
   cornerTL: {
     position: 'absolute',
     top: 0,
     left: 0,
-    width: 40,
-    height: 40,
+    width: 30,
+    height: 30,
     borderLeftWidth: 4,
     borderTopWidth: 4,
     borderColor: '#6B4FA2',
@@ -390,8 +525,8 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 0,
     right: 0,
-    width: 40,
-    height: 40,
+    width: 30,
+    height: 30,
     borderRightWidth: 4,
     borderTopWidth: 4,
     borderColor: '#6B4FA2',
@@ -400,8 +535,8 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 0,
     left: 0,
-    width: 40,
-    height: 40,
+    width: 30,
+    height: 30,
     borderLeftWidth: 4,
     borderBottomWidth: 4,
     borderColor: '#6B4FA2',
@@ -410,17 +545,24 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 0,
     right: 0,
-    width: 40,
-    height: 40,
+    width: 30,
+    height: 30,
     borderRightWidth: 4,
     borderBottomWidth: 4,
     borderColor: '#6B4FA2',
   },
-  scanHint: {
+  progressContainer: {
+    position: 'absolute',
+    top: '40%',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
+  progressText: {
     color: '#FFF',
     fontSize: 16,
-    textAlign: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    marginTop: 12,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 8,
@@ -429,7 +571,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-around',
     alignItems: 'center',
-    paddingBottom: 48,
     paddingHorizontal: 32,
   },
   controlButton: {
@@ -500,12 +641,12 @@ const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.9)',
-    justifyContent: 'center',
+    justifyContent: 'flex-end',
   },
   manualInputContainer: {
     backgroundColor: '#1E1E1E',
-    marginHorizontal: 16,
-    borderRadius: 16,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     padding: 20,
     maxHeight: '80%',
   },
@@ -519,6 +660,44 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: 'bold',
     color: '#FFF',
+  },
+  ocrInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#2A2A2A',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  ocrInfoText: {
+    color: '#AAA',
+    fontSize: 13,
+    marginLeft: 8,
+    flex: 1,
+  },
+  ocrAlternatives: {
+    marginBottom: 12,
+  },
+  ocrAlternativesTitle: {
+    color: '#888',
+    fontSize: 12,
+    marginBottom: 8,
+  },
+  ocrAlternativesRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  ocrAlternativeChip: {
+    backgroundColor: '#3A3A3A',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    marginRight: 8,
+    marginBottom: 8,
+  },
+  ocrAlternativeText: {
+    color: '#FFF',
+    fontSize: 12,
   },
   textInput: {
     backgroundColor: '#2A2A2A',
@@ -569,8 +748,8 @@ const styles = StyleSheet.create({
   },
   cardModalContent: {
     backgroundColor: '#1E1E1E',
-    marginHorizontal: 16,
-    borderRadius: 16,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     padding: 20,
     maxHeight: '90%',
   },
@@ -593,6 +772,13 @@ const styles = StyleSheet.create({
     color: '#FFF',
     textAlign: 'center',
     marginBottom: 4,
+  },
+  cardNameEnglish: {
+    fontSize: 14,
+    color: '#888',
+    textAlign: 'center',
+    marginBottom: 4,
+    fontStyle: 'italic',
   },
   cardType: {
     fontSize: 14,

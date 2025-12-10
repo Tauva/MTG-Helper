@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "MTG Collection",
-    "slug": "mtg-collection",
+    "slug": "mtg-collection-app",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -29,6 +29,7 @@
         "android.permission.CAMERA",
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO"
       ]
     },
@@ -51,9 +52,8 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "24c24b62-7392-4640-bdf8-f1a1925138e8"
+        "projectId": "dc91d743-6812-4cc0-a947-dfa53f2254d8"
       }
-    },
-    "owner": "t4uvas-organization"
+    }
   }
 }
